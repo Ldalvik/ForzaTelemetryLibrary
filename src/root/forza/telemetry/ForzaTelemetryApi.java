@@ -1,13 +1,20 @@
 package root.forza.telemetry;
 
+import android.util.Log;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.text.DecimalFormat;
+import java.util.Arrays;
 
 public class ForzaTelemetryApi {
-    public static final int PACKET_SIZE = 323;
+    private static final String TAG = "ForzaTelemetryApi";
+    public static final int DASH_PACKET_LENGTH = 311; // FM7
+    public static final int FH4_PACKET_LENGTH = 324; // FH4
+    public static final int FM8_PACKET_LENGTH = 331; // FM8
+    private final int packetLength;
     private final boolean isRaceOn;
     private final Long timeStampMS;
     private final Float engineMaxRpm;
@@ -102,17 +109,19 @@ public class ForzaTelemetryApi {
     private final Byte steer;
     private final Byte normalizedDrivingLine;
     private final Byte normalizedAIBrakeDifference;
+    private final Float tireWearFrontLeft;
+    private final Float tireWearFrontRight;
+    private final Float tireWearRearLeft;
+    private final Float tireWearRearRight;
+    private final int trackID;
 
     DecimalFormat df;
 
-    public ForzaTelemetryApi(byte[] bytes) throws Exception {
-        //Check that all 323 bytes were received
-        if (bytes.length < PACKET_SIZE) {
-            try {
-                throw new Exception("Invalid byte length");
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+    public ForzaTelemetryApi(int recvdLen,byte[] bytes) throws Exception {
+        packetLength = recvdLen;
+        //Check we got a Forza packet
+        if (!isFHPacket() && !isFM7Packet() && !isFM8Packet()) {
+            Log.e(TAG, "Invalid byte length: " + recvdLen + " allocated: " + bytes.length);
         }
         //Set decimal formatting
         df = new DecimalFormat("###.##");
@@ -180,8 +189,17 @@ public class ForzaTelemetryApi {
         carPerformanceIndex = getFromBuffer(bb, int.class);
         drivetrainType = getFromBuffer(bb, int.class);
         numOfCylinders = getFromBuffer(bb, int.class);
-        carType = getFromBuffer(bb, int.class);
-        objectHit = getFromBuffer(bb);
+        // We need to check for the game at this point because
+        // the packet structures are different...
+        // Only Horizon gets these values
+        if (isFHPacket()) {
+            carType = getFromBuffer(bb, int.class);
+            objectHit = getFromBuffer(bb);
+        } else {
+            // Clear for Motorsport
+            carType = 0;
+            objectHit = 0L;
+        }
         positionX = getFromBuffer(bb, float.class);
         positionY = getFromBuffer(bb, float.class);
         positionZ = getFromBuffer(bb, float.class);
@@ -209,6 +227,22 @@ public class ForzaTelemetryApi {
         steer = getFromBuffer(bb, byte.class);
         normalizedDrivingLine = getFromBuffer(bb, byte.class);
         normalizedAIBrakeDifference = getFromBuffer(bb, byte.class);
+        // Horizon / FM7 doesn't get these values - only for FM8
+        if (isFM8Packet()) {
+            // Set for FM8
+            tireWearFrontLeft = getFromBuffer(bb, float.class);
+            tireWearFrontRight = getFromBuffer(bb, float.class);
+            tireWearRearLeft = getFromBuffer(bb, float.class);
+            tireWearRearRight = getFromBuffer(bb, float.class);
+            trackID = getFromBuffer(bb, int.class);
+        } else {
+            // These are not available in Horizon - only FM7/8
+            tireWearFrontLeft = 0F;
+            tireWearFrontRight = 0f;
+            tireWearRearLeft = 0F;
+            tireWearRearRight = 0F;
+            trackID = 0;
+        }
     }
 
     //Method to check if selected type length is not overflowing the length of the bytebuffer
@@ -238,6 +272,18 @@ public class ForzaTelemetryApi {
     @SuppressWarnings("unchecked")
     private static <T> T getFromBuffer(ByteBuffer buffer) {
         return (T) (checkBuffer(buffer, 8) ? (Object) buffer.getLong() : 0L);
+    }
+
+    public boolean isFM7Packet() {
+        return packetLength == DASH_PACKET_LENGTH;
+    }
+
+    public boolean isFHPacket() {
+        return packetLength == FH4_PACKET_LENGTH;
+    }
+
+    public boolean isFM8Packet() {
+        return packetLength == FM8_PACKET_LENGTH;
     }
 
     /*

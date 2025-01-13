@@ -9,12 +9,12 @@ public class ForzaTelemetryBuilder {
         this.port = port;
     }
 
-    ForzaTelemetryBuilder addListener(ForzaInterface listener) {
+    public ForzaTelemetryBuilder addListener(ForzaInterface listener) {
         this.listener = listener;
         return this;
     }
 
-    Thread getThread() {
+    public Thread getThread() {
         return listener.startConnection(port);
     }
 }
